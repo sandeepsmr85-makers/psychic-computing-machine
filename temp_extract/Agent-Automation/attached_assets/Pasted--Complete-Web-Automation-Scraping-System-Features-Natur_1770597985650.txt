@@ -1,0 +1,736 @@
+/**
+
+- Complete Web Automation & Scraping System
+- 
+- Features:
+- - Natural language prompts for any website
+- - Incremental learning (teach chunk by chunk)
+- - Action caching for speed and cost optimization
+- - Generates rerunnable code
+- - Combines multiple taught actions
+- - Web scraping with structured data extraction
+- 
+- Usage:
+- 1. Teach individual actions
+- 1. Combine them in complex prompts
+- 1. Generate reusable code
+- 1. Run automated workflows
+   */
+
+import { Stagehand } from “@browserbasehq/stagehand”;
+import { z } from “zod”;
+import * as fs from “fs”;
+import * as path from “path”;
+import Anthropic from “@anthropic-ai/sdk”;
+
+// ============================================================================
+// TYPES & INTERFACES
+// ============================================================================
+
+interface CachedAction {
+name: string;
+instruction: string;
+action: any;
+timestamp: number;
+website: string;
+type: “act” | “extract” | “observe”;
+schema?: any;
+}
+
+interface WorkflowStep {
+actionName: string;
+params?: Record<string, any>;
+}
+
+interface AutomationResult {
+success: boolean;
+data?: any;
+error?: string;
+steps: string[];
+cacheHits: number;
+cacheMisses: number;
+cost: number;
+}
+
+interface GeneratedScript {
+filename: string;
+code: string;
+description: string;
+}
+
+// ============================================================================
+// MAIN AUTOMATION CLASS
+// ============================================================================
+
+class UniversalWebAutomation {
+private stagehand!: Stagehand;
+private actionCache: Map<string, CachedAction> = new Map();
+private anthropic: Anthropic;
+private cacheDir: string = “./automation-cache”;
+private scriptsDir: string = “./generated-scripts”;
+private currentWebsite: string = “”;
+private executionLog: string[] = [];
+private cacheHits: number = 0;
+private cacheMisses: number = 0;
+private totalCost: number = 0;
+
+constructor() {
+this.anthropic = new Anthropic({
+apiKey: process.env.ANTHROPIC_API_KEY!,
+});
+this.ensureDirectories();
+this.loadCache();
+}
+
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+
+private ensureDirectories() {
+[this.cacheDir, this.scriptsDir].forEach((dir) => {
+if (!fs.existsSync(dir)) {
+fs.mkdirSync(dir, { recursive: true });
+}
+});
+}
+
+async initialize(options: {
+env?: “LOCAL” | “BROWSERBASE”;
+headless?: boolean;
+debugMode?: boolean;
+} = {}) {
+const { env = “BROWSERBASE”, headless = false, debugMode = false } = options;
+
+```
+console.log("🚀 Initializing Universal Web Automation System...");
+
+if (env === "BROWSERBASE") {
+  this.stagehand = new Stagehand({
+    env: "BROWSERBASE",
+    apiKey: process.env.BROWSERBASE_API_KEY!,
+    projectId: process.env.BROWSERBASE_PROJECT_ID!,
+    enableCaching: true,
+    verbose: debugMode ? 2 : 0,
+    modelName: "gpt-4o",
+    modelClientOptions: {
+      apiKey: process.env.OPENAI_API_KEY,
+    },
+    browserbaseSessionCreateParams: {
+      proxies: true,
+      browserSettings: {
+        blockAds: true,
+        solveCaptchas: true,
+      },
+    },
+  });
+} else {
+  this.stagehand = new Stagehand({
+    env: "LOCAL",
+    enableCaching: true,
+    verbose: debugMode ? 2 : 0,
+    modelName: "gpt-4o",
+    modelClientOptions: {
+      apiKey: process.env.OPENAI_API_KEY,
+    },
+    localBrowserLaunchOptions: {
+      headless,
+      devtools: debugMode,
+    },
+  });
+}
+
+await this.stagehand.init();
+console.log("✅ System initialized successfully!");
+```
+
+}
+
+// ============================================================================
+// CACHE MANAGEMENT
+// ============================================================================
+
+private loadCache() {
+const cachePath = path.join(this.cacheDir, “actions.json”);
+if (fs.existsSync(cachePath)) {
+try {
+const data = JSON.parse(fs.readFileSync(cachePath, “utf-8”));
+this.actionCache = new Map(Object.entries(data));
+console.log(`📦 Loaded ${this.actionCache.size} cached actions`);
+} catch (error) {
+console.warn(“⚠️ Failed to load cache:”, error);
+}
+}
+}
+
+private saveCache() {
+const cachePath = path.join(this.cacheDir, “actions.json”);
+const cacheObject = Object.fromEntries(this.actionCache);
+fs.writeFileSync(cachePath, JSON.stringify(cacheObject, null, 2));
+console.log(`💾 Saved ${this.actionCache.size} actions to cache`);
+}
+
+private getCacheKey(actionName: string, website: string): string {
+return `${website}::${actionName}`;
+}
+
+// ============================================================================
+// TEACHING ACTIONS (Incremental Learning)
+// ============================================================================
+
+/**
+
+- Teach the system a new action for the current website
+  */
+  async teach(actionName: string, instruction: string, type: “act” | “extract” = “act”, schema?: z.ZodTypeAny) {
+  console.log(`\n📚 Teaching action: "${actionName}"`);
+  console.log(`   Instruction: "${instruction}"`);
+
+```
+const page = this.stagehand.context.pages()[0];
+const currentUrl = page.url();
+this.currentWebsite = new URL(currentUrl).hostname;
+
+try {
+  let action: any;
+
+  if (type === "act") {
+    // Use observe to get the action without executing
+    const observed = await this.stagehand.observe(instruction);
+    action = observed[0];
+    console.log(`   ✅ Learned action:`, action);
+  } else if (type === "extract") {
+    // For extraction, we need to execute once to learn the pattern
+    if (!schema) {
+      throw new Error("Schema required for extract actions");
+    }
+    const result = await this.stagehand.extract(instruction, schema);
+    action = { instruction, schema: schema.toString(), result };
+    console.log(`   ✅ Learned extraction pattern`);
+  }
+
+  // Cache the action
+  const cacheKey = this.getCacheKey(actionName, this.currentWebsite);
+  this.actionCache.set(cacheKey, {
+    name: actionName,
+    instruction,
+    action,
+    timestamp: Date.now(),
+    website: this.currentWebsite,
+    type,
+    schema: schema ? schema.toString() : undefined,
+  });
+
+  this.saveCache();
+  this.cacheMisses++;
+  this.totalCost += 0.02; // Approximate cost per LLM call
+
+  return { success: true, action };
+} catch (error) {
+  console.error(`   ❌ Failed to teach action:`, error);
+  return { success: false, error: String(error) };
+}
+```
+
+}
+
+/**
+
+- Teach multiple actions at once
+  */
+  async teachBatch(actions: Array<{ name: string; instruction: string; type?: “act” | “extract”; schema?: z.ZodTypeAny }>) {
+  console.log(`\n📚 Teaching ${actions.length} actions...`);
+  const results = [];
+
+```
+for (const { name, instruction, type = "act", schema } of actions) {
+  const result = await this.teach(name, instruction, type, schema);
+  results.push(result);
+}
+
+return results;
+```
+
+}
+
+// ============================================================================
+// EXECUTING ACTIONS
+// ============================================================================
+
+/**
+
+- Execute a single action (uses cache if available)
+  */
+  async execute(actionNameOrInstruction: string, params?: Record<string, any>): Promise<any> {
+  const page = this.stagehand.context.pages()[0];
+  const currentUrl = page.url();
+  this.currentWebsite = new URL(currentUrl).hostname;
+
+```
+const cacheKey = this.getCacheKey(actionNameOrInstruction, this.currentWebsite);
+const cached = this.actionCache.get(cacheKey);
+
+if (cached) {
+  console.log(`⚡ Using cached action: "${actionNameOrInstruction}"`);
+  this.cacheHits++;
+
+  try {
+    // Replace params if provided
+    let instruction = cached.instruction;
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        instruction = instruction.replace(`{${key}}`, String(value));
+      });
+    }
+
+    if (cached.type === "act") {
+      await this.stagehand.act(cached.action);
+      this.executionLog.push(`Executed: ${actionNameOrInstruction}`);
+      return { success: true };
+    } else if (cached.type === "extract") {
+      const result = await this.stagehand.extract(instruction, eval(cached.schema!));
+      this.executionLog.push(`Extracted: ${actionNameOrInstruction}`);
+      return result;
+    }
+  } catch (error) {
+    console.warn(`   ⚠️ Cached action failed, re-learning...`);
+    this.actionCache.delete(cacheKey);
+    return this.execute(actionNameOrInstruction, params);
+  }
+} else {
+  console.log(`🤖 Learning new action: "${actionNameOrInstruction}"`);
+  this.cacheMisses++;
+  this.totalCost += 0.02;
+
+  // Replace params in instruction
+  let instruction = actionNameOrInstruction;
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      instruction = instruction.replace(`{${key}}`, String(value));
+    });
+  }
+
+  const result = await this.stagehand.act(instruction);
+  this.executionLog.push(`Executed: ${actionNameOrInstruction}`);
+  return result;
+}
+```
+
+}
+
+/**
+
+- Execute a workflow (multiple actions in sequence)
+  */
+  async executeWorkflow(steps: WorkflowStep[]): Promise<AutomationResult> {
+  console.log(`\n🎬 Executing workflow with ${steps.length} steps...`);
+  this.executionLog = [];
+  this.cacheHits = 0;
+  this.cacheMisses = 0;
+  this.totalCost = 0;
+
+```
+const results: any[] = [];
+
+try {
+  for (const step of steps) {
+    const result = await this.execute(step.actionName, step.params);
+    results.push(result);
+  }
+
+  return {
+    success: true,
+    data: results,
+    steps: this.executionLog,
+    cacheHits: this.cacheHits,
+    cacheMisses: this.cacheMisses,
+    cost: this.totalCost,
+  };
+} catch (error) {
+  return {
+    success: false,
+    error: String(error),
+    steps: this.executionLog,
+    cacheHits: this.cacheHits,
+    cacheMisses: this.cacheMisses,
+    cost: this.totalCost,
+  };
+}
+```
+
+}
+
+// ============================================================================
+// NATURAL LANGUAGE PROMPT EXECUTION
+// ============================================================================
+
+/**
+
+- Execute complex automation from natural language prompt
+- Automatically detects if it can use cached actions or needs to learn new ones
+  */
+  async prompt(instruction: string): Promise<AutomationResult> {
+  console.log(`\n💬 Processing prompt: "${instruction}"`);
+
+```
+// Parse the instruction into steps using Claude
+const steps = await this.parseInstructionToSteps(instruction);
+console.log(`   Parsed into ${steps.length} steps`);
+
+// Execute the workflow
+return this.executeWorkflow(steps);
+```
+
+}
+
+/**
+
+- Use Claude to parse natural language into structured steps
+  */
+  private async parseInstructionToSteps(instruction: string): Promise<WorkflowStep[]> {
+  const page = this.stagehand.context.pages()[0];
+  const currentUrl = page.url();
+  this.currentWebsite = new URL(currentUrl).hostname;
+
+```
+// Get available cached actions for this website
+const availableActions = Array.from(this.actionCache.entries())
+  .filter(([key]) => key.startsWith(this.currentWebsite))
+  .map(([_, action]) => ({
+    name: action.name,
+    instruction: action.instruction,
+  }));
+
+const prompt = `Parse this automation instruction into executable steps.
+```
+
+Website: ${this.currentWebsite}
+Current URL: ${currentUrl}
+
+Available cached actions:
+${availableActions.map((a) => `- ${a.name}: ${a.instruction}`).join(”\n”) || “None”}
+
+User instruction: “${instruction}”
+
+Return a JSON array of steps. Each step should either:
+
+1. Use a cached action by name if available
+1. Provide a new instruction if no cached action fits
+
+Format:
+[
+{ “actionName”: “cached_action_name”, “params”: { “key”: “value” } },
+{ “actionName”: “new instruction here”, “params”: {} }
+]
+
+Return ONLY the JSON array, no other text.`;
+
+```
+const response = await this.anthropic.messages.create({
+  model: "claude-sonnet-4-20250514",
+  max_tokens: 2000,
+  messages: [{ role: "user", content: prompt }],
+});
+
+const content = response.content[0];
+if (content.type === "text") {
+  const jsonMatch = content.text.match(/\[[\s\S]*\]/);
+  if (jsonMatch) {
+    return JSON.parse(jsonMatch[0]);
+  }
+}
+
+throw new Error("Failed to parse instruction");
+```
+
+}
+
+// ============================================================================
+// WEB SCRAPING
+// ============================================================================
+
+/**
+
+- Scrape data from current page with structured schema
+  */
+  async scrape<T>(instruction: string, schema: z.ZodType<T>): Promise<T> {
+  console.log(`\n🕷️ Scraping: "${instruction}"`);
+  this.cacheMisses++;
+  this.totalCost += 0.03;
+
+```
+const result = await this.stagehand.extract(instruction, schema);
+console.log(`   ✅ Scraped data successfully`);
+return result as T;
+```
+
+}
+
+/**
+
+- Scrape multiple pages (pagination, lists, etc.)
+  */
+  async scrapeMultiple<T>(
+  instruction: string,
+  schema: z.ZodType<T>,
+  options: {
+  maxPages?: number;
+  nextPageAction?: string;
+  stopCondition?: (data: T[]) => boolean;
+  } = {}
+  ): Promise<T[]> {
+  const { maxPages = 10, nextPageAction = “click next page button” } = options;
+  const results: T[] = [];
+
+```
+console.log(`\n🕷️ Multi-page scraping...`);
+
+for (let i = 0; i < maxPages; i++) {
+  try {
+    const data = await this.scrape(instruction, schema);
+    results.push(data);
+    console.log(`   Page ${i + 1}: ✅`);
+
+    if (options.stopCondition && options.stopCondition(results)) {
+      console.log(`   Stop condition met`);
+      break;
+    }
+
+    // Try to go to next page
+    try {
+      await this.execute(nextPageAction);
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait for page load
+    } catch (error) {
+      console.log(`   No more pages`);
+      break;
+    }
+  } catch (error) {
+    console.error(`   Error on page ${i + 1}:`, error);
+    break;
+  }
+}
+
+return results;
+```
+
+}
+
+// ============================================================================
+// CODE GENERATION
+// ============================================================================
+
+/**
+
+- Generate rerunnable TypeScript code from cached actions
+  */
+  async generateCode(workflowName: string, steps: WorkflowStep[]): Promise<GeneratedScript> {
+  console.log(`\n💻 Generating rerunnable code for: "${workflowName}"`);
+
+```
+const imports = `import { Stagehand } from "@browserbasehq/stagehand";
+```
+
+import { z } from “zod”;
+
+/**
+
+- Auto-generated workflow: ${workflowName}
+- Generated on: ${new Date().toISOString()}
+- Website: ${this.currentWebsite}
+  */
+  `;
+  
+  const cacheData = steps
+  .map((step) => {
+  const cacheKey = this.getCacheKey(step.actionName, this.currentWebsite);
+  const cached = this.actionCache.get(cacheKey);
+  if (cached) {
+  return `const ${step.actionName.replace(/[^a-zA-Z0-9]/g, "_")}_action = ${JSON.stringify(cached.action, null, 2)};`;
+  }
+  return “”;
+  })
+  .filter(Boolean)
+  .join(”\n\n”);
+  
+  const mainFunction = `
+  async function ${workflowName.replace(/[^a-zA-Z0-9]/g, “_”)}() {
+  // Initialize Stagehand
+  const stagehand = new Stagehand({
+  env: “BROWSERBASE”,
+  apiKey: process.env.BROWSERBASE_API_KEY!,
+  projectId: process.env.BROWSERBASE_PROJECT_ID!,
+  enableCaching: true,
+  modelName: “gpt-4o”,
+  modelClientOptions: {
+  apiKey: process.env.OPENAI_API_KEY,
+  },
+  });
+
+await stagehand.init();
+const page = stagehand.context.pages()[0];
+
+console.log(“🚀 Starting workflow: ${workflowName}”);
+
+try {
+${steps
+.map((step, i) => {
+const cacheKey = this.getCacheKey(step.actionName, this.currentWebsite);
+const cached = this.actionCache.get(cacheKey);
+const varName = step.actionName.replace(/[^a-zA-Z0-9]/g, “_”);
+
+```
+if (cached) {
+  return `    // Step ${i + 1}: ${step.actionName}
+console.log("Executing: ${step.actionName}");
+await stagehand.act(${varName}_action);`;
+} else {
+  return `    // Step ${i + 1}: ${step.actionName}
+console.log("Executing: ${step.actionName}");
+await stagehand.act("${step.actionName}");`;
+}
+```
+
+})
+.join(”\n\n”)}
+
+```
+console.log("✅ Workflow completed successfully!");
+```
+
+} catch (error) {
+console.error(“❌ Workflow failed:”, error);
+throw error;
+} finally {
+await stagehand.context.close();
+}
+}
+
+// Run the workflow
+${workflowName.replace(/[^a-zA-Z0-9]/g, “_”)}().catch(console.error);
+`;
+
+```
+const code = `${imports}\n${cacheData}\n${mainFunction}`;
+
+const filename = path.join(this.scriptsDir, `${workflowName.replace(/[^a-zA-Z0-9]/g, "_")}.ts`);
+fs.writeFileSync(filename, code);
+
+console.log(`   ✅ Generated code saved to: ${filename}`);
+
+return {
+  filename,
+  code,
+  description: `Workflow: ${workflowName} for ${this.currentWebsite}`,
+};
+```
+
+}
+
+/**
+
+- Generate code from the last executed workflow
+  */
+  async generateCodeFromLastWorkflow(workflowName: string): Promise<GeneratedScript> {
+  if (this.executionLog.length === 0) {
+  throw new Error(“No workflow has been executed yet”);
+  }
+
+```
+const steps: WorkflowStep[] = this.executionLog.map((log) => {
+  const actionName = log.replace("Executed: ", "").replace("Extracted: ", "");
+  return { actionName };
+});
+
+return this.generateCode(workflowName, steps);
+```
+
+}
+
+// ============================================================================
+// NAVIGATION & PAGE CONTROL
+// ============================================================================
+
+async goto(url: string) {
+console.log(`🌐 Navigating to: ${url}`);
+const page = this.stagehand.context.pages()[0];
+await page.goto(url);
+this.currentWebsite = new URL(url).hostname;
+console.log(`   ✅ Loaded: ${this.currentWebsite}`);
+}
+
+async waitForNavigation() {
+const page = this.stagehand.context.pages()[0];
+await page.waitForLoadState(“networkidle”);
+}
+
+async screenshot(filename?: string) {
+const page = this.stagehand.context.pages()[0];
+const filepath = filename || path.join(this.scriptsDir, `screenshot-${Date.now()}.png`);
+await page.screenshot({ path: filepath });
+console.log(`📸 Screenshot saved: ${filepath}`);
+return filepath;
+}
+
+// ============================================================================
+// UTILITY METHODS
+// ============================================================================
+
+/**
+
+- List all cached actions for current or all websites
+  */
+  listCachedActions(website?: string): CachedAction[] {
+  const actions = Array.from(this.actionCache.values());
+  if (website) {
+  return actions.filter((a) => a.website === website);
+  }
+  return actions;
+  }
+
+/**
+
+- Clear cache for specific website or all
+  */
+  clearCache(website?: string) {
+  if (website) {
+  const keysToDelete = Array.from(this.actionCache.keys()).filter((key) => key.startsWith(website));
+  keysToDelete.forEach((key) => this.actionCache.delete(key));
+  console.log(`🗑️ Cleared ${keysToDelete.length} cached actions for ${website}`);
+  } else {
+  this.actionCache.clear();
+  console.log(`🗑️ Cleared all cached actions`);
+  }
+  this.saveCache();
+  }
+
+/**
+
+- Get statistics
+  */
+  getStats() {
+  return {
+  totalCachedActions: this.actionCache.size,
+  currentWebsite: this.currentWebsite,
+  lastExecutionStats: {
+  steps: this.executionLog.length,
+  cacheHits: this.cacheHits,
+  cacheMisses: this.cacheMisses,
+  estimatedCost: this.totalCost,
+  efficiency: this.cacheHits + this.cacheMisses > 0 ? (this.cacheHits / (this.cacheHits + this.cacheMisses)) * 100 : 0,
+  },
+  };
+  }
+
+async close() {
+console.log(”\n👋 Closing automation system…”);
+await this.stagehand.context.close();
+this.saveCache();
+console.log(“✅ System closed successfully”);
+}
+}
+
+// ============================================================================
+// EXPORT
+// ============================================================================
+
+export { UniversalWebAutomation, WorkflowStep, AutomationResult, GeneratedScript };
+export default UniversalWebAutomation;

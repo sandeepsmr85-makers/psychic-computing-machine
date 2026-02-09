@@ -1,0 +1,111 @@
+/**
+
+- QUICK START SCRIPT
+- Run this to test your setup and see the system in action!
+  */
+
+import UniversalWebAutomation from “./complete-automation-system”;
+
+async function quickStart() {
+console.log(“🚀 Universal Web Automation - Quick Start\n”);
+console.log(“This demo will:”);
+console.log(“1. Navigate to GitHub”);
+console.log(“2. Teach some basic actions”);
+console.log(“3. Execute a combined workflow”);
+console.log(“4. Generate reusable code\n”);
+
+const automation = new UniversalWebAutomation();
+
+try {
+// Initialize
+console.log(“📦 Initializing system…”);
+await automation.initialize({
+env: “LOCAL”, // Change to “BROWSERBASE” for production
+headless: false, // Set to true to hide browser
+debugMode: false,
+});
+
+```
+// Navigate
+console.log("\n🌐 Navigating to GitHub...");
+await automation.goto("https://github.com");
+await new Promise((resolve) => setTimeout(resolve, 2000));
+
+// Session 1: Teach search
+console.log("\n📚 SESSION 1: Teaching search actions...");
+await automation.teach("click_search", "click the search button at the top");
+await automation.teach("type_query", "type {query} in the search box");
+await automation.teach("press_enter", "press enter in the search box");
+
+console.log("✅ Learned 3 actions!");
+
+// Session 2: Execute workflow using cached actions
+console.log("\n⚡ SESSION 2: Executing workflow with cached actions...");
+const result = await automation.executeWorkflow([
+  { actionName: "click_search" },
+  { actionName: "type_query", params: { query: "stagehand" } },
+  { actionName: "press_enter" },
+]);
+
+console.log("\n📊 Execution Result:");
+console.log(`   Success: ${result.success}`);
+console.log(`   Steps executed: ${result.steps.length}`);
+console.log(`   Cache hits: ${result.cacheHits}`);
+console.log(`   Cache misses: ${result.cacheMisses}`);
+console.log(`   Estimated cost: $${result.cost.toFixed(4)}`);
+console.log(`   Efficiency: ${((result.cacheHits / (result.cacheHits + result.cacheMisses)) * 100).toFixed(1)}%`);
+
+// Generate code
+console.log("\n💻 Generating reusable code...");
+const script = await automation.generateCodeFromLastWorkflow("github_search_demo");
+console.log(`   ✅ Code saved to: ${script.filename}`);
+
+// Show stats
+console.log("\n📈 System Statistics:");
+const stats = automation.getStats();
+console.log(`   Total cached actions: ${stats.totalCachedActions}`);
+console.log(`   Current website: ${stats.currentWebsite}`);
+
+// List cached actions
+console.log("\n📋 Cached Actions:");
+const actions = automation.listCachedActions("github.com");
+actions.forEach((action, i) => {
+  console.log(`   ${i + 1}. ${action.name}: "${action.instruction}"`);
+});
+
+console.log("\n✅ Demo completed successfully!");
+console.log("\n💡 What happened:");
+console.log("   1. You taught the system 3 actions (cost: ~$0.06)");
+console.log("   2. System cached all actions");
+console.log("   3. Executed workflow using cache (cost: $0.00!)");
+console.log("   4. Generated reusable TypeScript code");
+console.log("\n🎯 Next steps:");
+console.log("   - Run the generated script: npx tsx " + script.filename);
+console.log("   - Check the cache: cat automation-cache/actions.json");
+console.log("   - Try the examples: npm run example:incremental");
+console.log("   - Read the docs: cat README.md");
+
+await automation.close();
+```
+
+} catch (error) {
+console.error(”\n❌ Error:”, error);
+console.log(”\n🔧 Troubleshooting:”);
+console.log(”   1. Make sure you have .env file with API keys”);
+console.log(”   2. Check that all dependencies are installed”);
+console.log(”   3. Try running: npm install”);
+console.log(”   4. For Browserbase: set BROWSERBASE_API_KEY and PROJECT_ID”);
+
+```
+await automation.close();
+process.exit(1);
+```
+
+}
+}
+
+// Run
+quickStart().catch((error) => {
+console.error(“Fatal error:”, error);
+process.exit(1);
+});

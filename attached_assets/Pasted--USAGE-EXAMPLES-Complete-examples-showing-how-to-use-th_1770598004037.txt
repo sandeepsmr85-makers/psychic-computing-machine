@@ -1,0 +1,453 @@
+/**
+
+- USAGE EXAMPLES
+- Complete examples showing how to use the Universal Web Automation System
+  */
+
+import UniversalWebAutomation from “./complete-automation-system”;
+import { z } from “zod”;
+
+// ============================================================================
+// EXAMPLE 1: BASIC TEACHING & EXECUTION
+// ============================================================================
+
+async function example1_BasicTeaching() {
+const automation = new UniversalWebAutomation();
+await automation.initialize({ env: “LOCAL”, headless: false });
+
+// Navigate to website
+await automation.goto(“https://github.com”);
+
+// Teach individual actions
+await automation.teach(“search”, “click the search button”);
+await automation.teach(“type_query”, “type {query} in search box”);
+await automation.teach(“select_first”, “click the first repository result”);
+
+// Later: Execute combined workflow
+const result = await automation.executeWorkflow([
+{ actionName: “search” },
+{ actionName: “type_query”, params: { query: “stagehand” } },
+{ actionName: “select_first” },
+]);
+
+console.log(result);
+await automation.close();
+}
+
+// ============================================================================
+// EXAMPLE 2: NATURAL LANGUAGE PROMPTS
+// ============================================================================
+
+async function example2_NaturalLanguagePrompts() {
+const automation = new UniversalWebAutomation();
+await automation.initialize({ env: “BROWSERBASE” });
+
+await automation.goto(“https://amazon.com”);
+
+// First time - system learns
+await automation.prompt(“search for gaming laptops under $1500 and click the first result”);
+
+// System automatically:
+// 1. Parses the instruction
+// 2. Breaks it into steps
+// 3. Executes each step
+// 4. Caches successful actions
+
+// Second time - uses cache (fast & cheap!)
+await automation.prompt(“search for wireless headphones and click the first result”);
+
+await automation.close();
+}
+
+// ============================================================================
+// EXAMPLE 3: INCREMENTAL LEARNING (Your Use Case!)
+// ============================================================================
+
+async function example3_IncrementalLearning() {
+const automation = new UniversalWebAutomation();
+await automation.initialize();
+
+await automation.goto(“https://twitter.com”);
+
+// SESSION 1: Teach login flow
+console.log(”\n=== SESSION 1: Teaching Login ===”);
+await automation.teach(“click_login”, “click the login button”);
+await automation.teach(“enter_username”, “type {username} in username field”);
+await automation.teach(“enter_password”, “type {password} in password field”);
+await automation.teach(“submit_login”, “click the login submit button”);
+
+// SESSION 2: Teach search
+console.log(”\n=== SESSION 2: Teaching Search ===”);
+await automation.teach(“click_search”, “click the search icon”);
+await automation.teach(“type_search”, “type {query} in search box”);
+
+// SESSION 3: Teach posting
+console.log(”\n=== SESSION 3: Teaching Post ===”);
+await automation.teach(“click_tweet”, “click the tweet button”);
+await automation.teach(“write_tweet”, “type {text} in tweet box”);
+await automation.teach(“send_tweet”, “click send tweet”);
+
+// LATER: Combine everything in one prompt!
+console.log(”\n=== COMBINED WORKFLOW ===”);
+const result = await automation.prompt(
+“login with username john@example.com and password secret123, then search for #AI, then post a tweet saying ‘Interesting discussion!’”
+);
+
+console.log(“Stats:”, automation.getStats());
+// Result will show high cache hit rate = fast & cheap!
+
+await automation.close();
+}
+
+// ============================================================================
+// EXAMPLE 4: WEB SCRAPING
+// ============================================================================
+
+async function example4_WebScraping() {
+const automation = new UniversalWebAutomation();
+await automation.initialize();
+
+await automation.goto(“https://news.ycombinator.com”);
+
+// Define what data to extract
+const articleSchema = z.object({
+title: z.string(),
+url: z.string(),
+points: z.number(),
+author: z.string(),
+});
+
+// Scrape single article
+const article = await automation.scrape(
+“extract the title, url, points, and author of the first article”,
+articleSchema
+);
+
+console.log(“Scraped article:”, article);
+
+// Scrape multiple articles
+const articlesSchema = z.array(
+z.object({
+title: z.string(),
+points: z.number(),
+})
+);
+
+const articles = await automation.scrape(“extract title and points of all articles on this page”, articlesSchema);
+
+console.log(`Scraped ${articles.length} articles`);
+
+await automation.close();
+}
+
+// ============================================================================
+// EXAMPLE 5: MULTI-PAGE SCRAPING (Pagination)
+// ============================================================================
+
+async function example5_MultiPageScraping() {
+const automation = new UniversalWebAutomation();
+await automation.initialize();
+
+await automation.goto(“https://news.ycombinator.com”);
+
+const articleSchema = z.object({
+title: z.string(),
+points: z.number(),
+});
+
+// Scrape across multiple pages
+const allArticles = await automation.scrapeMultiple(
+“extract all article titles and points from this page”,
+z.array(articleSchema),
+{
+maxPages: 3,
+nextPageAction: “click the more button at the bottom”,
+stopCondition: (data) => data.length >= 100, // Stop after 100 articles
+}
+);
+
+console.log(`Total articles scraped: ${allArticles.flat().length}`);
+
+await automation.close();
+}
+
+// ============================================================================
+// EXAMPLE 6: GENERATE RERUNNABLE CODE
+// ============================================================================
+
+async function example6_GenerateCode() {
+const automation = new UniversalWebAutomation();
+await automation.initialize();
+
+await automation.goto(“https://github.com”);
+
+// Execute workflow
+await automation.prompt(“search for ‘react’ and click the first repository”);
+
+// Generate rerunnable code from what just happened
+const script = await automation.generateCodeFromLastWorkflow(“github_search_react”);
+
+console.log(`Generated script: ${script.filename}`);
+console.log(“Code preview:”);
+console.log(script.code);
+
+// Now you can run the generated .ts file independently!
+// $ ts-node generated-scripts/github_search_react.ts
+
+await automation.close();
+}
+
+// ============================================================================
+// EXAMPLE 7: COMPLEX E-COMMERCE WORKFLOW
+// ============================================================================
+
+async function example7_EcommerceWorkflow() {
+const automation = new UniversalWebAutomation();
+await automation.initialize({ env: “BROWSERBASE” });
+
+await automation.goto(“https://amazon.com”);
+
+// Teach the complete checkout flow
+await automation.teachBatch([
+{ name: “search_product”, instruction: “type {product} in search box and press enter” },
+{ name: “select_first”, instruction: “click the first product” },
+{ name: “add_to_cart”, instruction: “click add to cart button” },
+{ name: “goto_cart”, instruction: “click the cart icon” },
+{ name: “proceed_checkout”, instruction: “click proceed to checkout” },
+]);
+
+// Execute complete workflow
+const result = await automation.executeWorkflow([
+{ actionName: “search_product”, params: { product: “wireless mouse” } },
+{ actionName: “select_first” },
+{ actionName: “add_to_cart” },
+{ actionName: “goto_cart” },
+{ actionName: “proceed_checkout” },
+]);
+
+// Generate reusable code
+await automation.generateCode(“amazon_add_to_cart”, [
+{ actionName: “search_product”, params: { product: “{PRODUCT}” } },
+{ actionName: “select_first” },
+{ actionName: “add_to_cart” },
+]);
+
+console.log(“Workflow stats:”, automation.getStats());
+
+await automation.close();
+}
+
+// ============================================================================
+// EXAMPLE 8: FORM FILLING
+// ============================================================================
+
+async function example8_FormFilling() {
+const automation = new UniversalWebAutomation();
+await automation.initialize();
+
+await automation.goto(“https://example.com/contact-form”);
+
+// Teach form fields
+await automation.teachBatch([
+{ name: “fill_name”, instruction: “type {name} in the name field” },
+{ name: “fill_email”, instruction: “type {email} in the email field” },
+{ name: “fill_message”, instruction: “type {message} in the message textarea” },
+{ name: “submit”, instruction: “click the submit button” },
+]);
+
+// Execute with different data
+await automation.executeWorkflow([
+{ actionName: “fill_name”, params: { name: “John Doe” } },
+{ actionName: “fill_email”, params: { email: “john@example.com” } },
+{ actionName: “fill_message”, params: { message: “Hello, I need help!” } },
+{ actionName: “submit” },
+]);
+
+await automation.close();
+}
+
+// ============================================================================
+// EXAMPLE 9: JOB APPLICATION AUTOMATION
+// ============================================================================
+
+async function example9_JobApplication() {
+const automation = new UniversalWebAutomation();
+await automation.initialize({ env: “BROWSERBASE” });
+
+// Apply to multiple job boards
+const jobBoards = [
+“https://linkedin.com/jobs”,
+“https://indeed.com”,
+“https://greenhouse.io/jobs”,
+];
+
+for (const board of jobBoards) {
+await automation.goto(board);
+
+```
+// Use natural language - system learns each site
+await automation.prompt(
+  "search for 'software engineer' jobs in 'San Francisco', filter by remote, and apply to the first 3 jobs"
+);
+
+// Each site will be learned and cached separately
+console.log(`Completed ${board}`);
+```
+
+}
+
+// Generate code for each job board
+await automation.generateCodeFromLastWorkflow(“auto_apply_jobs”);
+
+await automation.close();
+}
+
+// ============================================================================
+// EXAMPLE 10: DATA MONITORING
+// ============================================================================
+
+async function example10_DataMonitoring() {
+const automation = new UniversalWebAutomation();
+await automation.initialize();
+
+await automation.goto(“https://example-stock-site.com”);
+
+// Teach extraction once
+await automation.teach(
+“get_stock_price”,
+“extract the current stock price”,
+“extract”,
+z.object({
+symbol: z.string(),
+price: z.number(),
+change: z.number(),
+})
+);
+
+// Set up monitoring loop
+const priceHistory = [];
+
+for (let i = 0; i < 10; i++) {
+const price = await automation.execute(“get_stock_price”);
+priceHistory.push({ time: new Date(), …price });
+
+```
+console.log(`Price check ${i + 1}:`, price);
+
+// Wait 5 minutes
+await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+```
+
+}
+
+console.log(“Price history:”, priceHistory);
+
+await automation.close();
+}
+
+// ============================================================================
+// EXAMPLE 11: CACHE MANAGEMENT
+// ============================================================================
+
+async function example11_CacheManagement() {
+const automation = new UniversalWebAutomation();
+await automation.initialize();
+
+await automation.goto(“https://github.com”);
+
+// Teach some actions
+await automation.teach(“search”, “click search”);
+await automation.teach(“login”, “click sign in”);
+
+// List all cached actions
+const allActions = automation.listCachedActions();
+console.log(“All cached actions:”, allActions);
+
+// List actions for specific site
+const githubActions = automation.listCachedActions(“github.com”);
+console.log(“GitHub actions:”, githubActions);
+
+// Get statistics
+const stats = automation.getStats();
+console.log(“Stats:”, stats);
+
+// Clear cache for specific site
+automation.clearCache(“github.com”);
+
+// Or clear all
+// automation.clearCache();
+
+await automation.close();
+}
+
+// ============================================================================
+// EXAMPLE 12: ERROR HANDLING & FALLBACKS
+// ============================================================================
+
+async function example12_ErrorHandling() {
+const automation = new UniversalWebAutomation();
+await automation.initialize();
+
+await automation.goto(“https://example.com”);
+
+try {
+// Try cached action first
+await automation.execute(“cached_action_that_might_fail”);
+} catch (error) {
+console.log(“Cached action failed, trying fresh…”);
+
+```
+// Clear cache and retry
+automation.clearCache("example.com");
+await automation.execute("click the button");
+```
+
+}
+
+await automation.close();
+}
+
+// ============================================================================
+// RUN EXAMPLES
+// ============================================================================
+
+async function runAllExamples() {
+console.log(“🚀 Running all examples…\n”);
+
+// Uncomment the example you want to run:
+
+// await example1_BasicTeaching();
+// await example2_NaturalLanguagePrompts();
+// await example3_IncrementalLearning(); // ← YOUR USE CASE!
+// await example4_WebScraping();
+// await example5_MultiPageScraping();
+// await example6_GenerateCode();
+// await example7_EcommerceWorkflow();
+// await example8_FormFilling();
+// await example9_JobApplication();
+// await example10_DataMonitoring();
+// await example11_CacheManagement();
+// await example12_ErrorHandling();
+
+console.log(”\n✅ Examples completed!”);
+}
+
+// Run if executed directly
+if (require.main === module) {
+runAllExamples().catch(console.error);
+}
+
+export {
+example1_BasicTeaching,
+example2_NaturalLanguagePrompts,
+example3_IncrementalLearning,
+example4_WebScraping,
+example5_MultiPageScraping,
+example6_GenerateCode,
+example7_EcommerceWorkflow,
+example8_FormFilling,
+example9_JobApplication,
+example10_DataMonitoring,
+example11_CacheManagement,
+example12_ErrorHandling,
+};
